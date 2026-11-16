@@ -13,6 +13,41 @@ class VerificationController {
     }
   }
 
+  async AddVerifier(req: Request, res: Response) {
+    try {
+      const { stage } = req.params;
+      const { nip } = req.body;
+
+      if (!nip) {
+        throw new Error("NIP verifikator wajib disertakan.");
+      }
+
+      const result = await verificationRepository.AddVerifier({
+        stage: Number(stage),
+        nip,
+      });
+
+      return Ok({ res, message: result.message, data: result.user });
+    } catch (error) {
+      return ErrorResponse({ res, error });
+    }
+  }
+
+  async RemoveVerifier(req: Request, res: Response) {
+    try {
+      const { stage, nip } = req.params;
+
+      const result = await verificationRepository.RemoveVerifier({
+        stage: Number(stage),
+        nip,
+      });
+
+      return Ok({ res, message: result.message });
+    } catch (error) {
+      return ErrorResponse({ res, error });
+    }
+  }
+
   async GetApprovals(req: Request, res: Response) {
     try {
       const { stage, page, page_size, search } = req.query;

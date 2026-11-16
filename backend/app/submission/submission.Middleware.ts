@@ -57,6 +57,24 @@ class SubmissionMiddleware {
 
   async SchemaMiddleware(req: Request, res: Response, next: NextFunction) {
     try {
+      // Parse JSON strings from multipart FormData if necessary
+      const jsonFields = [
+        "template_values",
+        "groups",
+        "users",
+        "units",
+        "list_consider",
+        "list_observe",
+        "list_decide",
+      ];
+      for (const field of jsonFields) {
+        if (typeof req.body[field] === "string") {
+          try {
+            req.body[field] = JSON.parse(req.body[field]);
+          } catch {}
+        }
+      }
+
       const validate = await SubmissionSchema.parse(req.body);
 
       if (

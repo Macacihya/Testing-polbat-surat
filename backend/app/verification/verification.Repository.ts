@@ -3,35 +3,94 @@ import { SubmissionStatus } from "../submission/submission.Schema";
 
 class VerificationRepository {
   async GetStages() {
-    const verifiers = await prisma.tbm_user.findMany({
+    const stages = await prisma.tbm_verification_stage.findMany({
+      orderBy: { id: "asc" },
+      include: {
+        verifiers: {
+          include: {
+            user: true,
+          },
+        },
+      },
+    });
+
+    return stages.map((s) => ({
+      stage: s.id,
+      name: s.name,
+      description: s.description,
+      is_by_unit: s.is_by_unit,
+      verifiers: s.verifiers.map((v) => v.user).filter(Boolean),
+    }));
+  }
+
+  async AddVerifier({ stage, nip }: { stage: number; nip: string }) {
+    const user = await prisma.tbm_user.findFirst({
       where: {
-        nip: { in: ["198001012005", "staff", "197903032003"] },
+        OR: [{ nip }, { id: nip }],
         is_deleted: false,
       },
     });
 
-    const vMap: Record<string, any> = {};
-    for (const v of verifiers) {
-      vMap[v.nip] = v;
+    if (!user) {
+      throw new Error("Pegawai / Verifikator dengan NIP tersebut tidak ditemukan.");
     }
 
-    return [
-      {
-        stage: 1,
-        name: "Verifikasi Unit",
-        verifiers: vMap["198001012005"] ? [vMap["198001012005"]] : [],
+    const stageData = await prisma.tbm_verification_stage.findUnique({
+      where: { id: Number(stage) },
+    });
+
+    if (!stageData) {
+      throw new Error(`Tahap verifikasi ${stage} tidak ditemukan.`);
+    }
+
+    const existing = await prisma.tbm_verification_stage_verifier.findUnique({
+      where: {
+        stage_id_user_id: {
+          stage_id: Number(stage),
+          user_id: user.id,
+        },
       },
-      {
-        stage: 2,
-        name: "Verifikasi Bagian Umum",
-        verifiers: vMap["staff"] ? [vMap["staff"]] : [],
+    });
+
+    if (existing) {
+      throw new Error(`Verifikator ${user.nama} sudah terdaftar pada Tahap ${stage}.`);
+    }
+
+    await prisma.tbm_verification_stage_verifier.create({
+      data: {
+        stage_id: Number(stage),
+        user_id: user.id,
       },
-      {
-        stage: 3,
-        name: "Verifikasi Pimpinan",
-        verifiers: vMap["197903032003"] ? [vMap["197903032003"]] : [],
+    });
+
+    return {
+      message: `Verifikator ${user.nama} berhasil ditambahkan ke Tahap ${stage}.`,
+      user,
+    };
+  }
+
+  async RemoveVerifier({ stage, nip }: { stage: number; nip: string }) {
+    const user = await prisma.tbm_user.findFirst({
+      where: {
+        OR: [{ nip }, { id: nip }],
+        is_deleted: false,
       },
-    ];
+    });
+
+    if (!user) {
+      throw new Error("Pegawai / Verifikator tidak ditemukan.");
+    }
+
+    await prisma.tbm_verification_stage_verifier.deleteMany({
+      where: {
+        stage_id: Number(stage),
+        user_id: user.id,
+      },
+    });
+
+    return {
+      message: `Verifikator ${user.nama} berhasil dihapus dari Tahap ${stage}.`,
+    };
   }
 
   async GetApprovals({
@@ -127,11 +186,17 @@ class VerificationRepository {
 
     if (!submission) throw new Error("Pengajuan tidak ditemukan");
 
-    const stageConfig = [
-      { stage: 1, name: "Verifikasi Unit" },
-      { stage: 2, name: "Verifikasi Bagian Umum" },
-      { stage: 3, name: "Verifikasi Pimpinan" },
-    ];
+    const masterStages = await prisma.tbm_verification_stage.findMany({
+      orderBy: { id: "asc" },
+    });
+
+    const stageConfig = masterStages.length > 0
+      ? masterStages.map((s) => ({ stage: s.id, name: s.name }))
+      : [
+          { stage: 1, name: "Verifikasi Unit" },
+          { stage: 2, name: "Verifikasi Bagian Umum" },
+          { stage: 3, name: "Verifikasi Pimpinan" },
+        ];
 
     const steps = stageConfig.map((sc) => {
       const v = submission.verifications.find((x) => x.stage === sc.stage);

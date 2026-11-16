@@ -52,6 +52,7 @@ class SubmissionRepository {
             where,
             include: {
               creator: true,
+              template: true,
               verifications: {
                 include: { verifier: true },
                 orderBy: { stage: "asc" },
@@ -87,6 +88,7 @@ class SubmissionRepository {
           where,
           include: {
             creator: true,
+            template: true,
             verifications: {
               include: { verifier: true },
               orderBy: { stage: "asc" },
@@ -196,10 +198,115 @@ class SubmissionRepository {
             verifier: true,
           },
         },
+        template: true,
         creator: true,
         modifier: true,
       },
     });
+  }
+
+  async initializeVerifications(
+    tx: Prisma.TransactionClient,
+    submission: { id: string; title: string; creator_id?: string | null },
+    creator?: tbm_user | null
+  ) {
+    const existingVerifications = await tx.tbl_submission_verification.count({
+      where: { submission_id: submission.id },
+    });
+
+    if (existingVerifications > 0) return;
+
+    // Ambil tahapan verifikasi master dari database
+    const stages = await tx.tbm_verification_stage.findMany({
+      orderBy: { id: "asc" },
+      include: {
+        verifiers: {
+          include: { user: true },
+        },
+      },
+    });
+
+    const creatorUser =
+      creator ||
+      (submission.creator_id
+        ? await tx.tbm_user.findUnique({ where: { id: submission.creator_id } })
+        : null);
+
+    const defaultStageConfig = [
+      { id: 1, name: "Verifikasi Unit", is_by_unit: true, fallbackVerifier: "198001012005" },
+      { id: 2, name: "Verifikasi Bagian Umum", is_by_unit: false, fallbackVerifier: "staff" },
+      { id: 3, name: "Verifikasi Pimpinan", is_by_unit: false, fallbackVerifier: "197903032003" },
+    ];
+
+    const targetStages = stages.length > 0 ? stages : defaultStageConfig;
+    const verificationData: any[] = [];
+    let stage1VerifierId: string | null = null;
+
+    for (const stage of targetStages) {
+      let assignedVerifierId: string | null = null;
+
+      // Jika stage berdasarkan unit (Tahap 1), ambil leader_id dari unit pengusul
+      if (stage.is_by_unit && creatorUser?.unit) {
+        const unit = await tx.tbm_unit.findFirst({
+          where: { name: creatorUser.unit, is_deleted: false },
+        });
+        if (unit?.leader_id) {
+          assignedVerifierId = unit.leader_id;
+        }
+      }
+
+      // Jika tidak dapat leader_id, ambil dari verifikator master yang didaftarkan pada stage ini
+      if (!assignedVerifierId) {
+        if ("verifiers" in stage && stage.verifiers && stage.verifiers.length > 0) {
+          assignedVerifierId = stage.verifiers[0].user_id;
+        } else if ("fallbackVerifier" in stage) {
+          assignedVerifierId = stage.fallbackVerifier;
+        }
+      }
+
+      // Fallback terakhir: admin
+      if (!assignedVerifierId) {
+        const fallbackAdmin = await tx.tbm_user.findFirst({ where: { is_admin: true } });
+        assignedVerifierId = fallbackAdmin?.id || "admin";
+      }
+
+      if (stage.id === 1) {
+        stage1VerifierId = assignedVerifierId;
+      }
+
+      verificationData.push({
+        submission_id: submission.id,
+        stage: stage.id,
+        stage_name: stage.name,
+        verifier_id: assignedVerifierId,
+        status: "PENDING",
+      });
+    }
+
+    if (verificationData.length > 0) {
+      await tx.tbl_submission_verification.createMany({
+        data: verificationData,
+      });
+
+      await tx.tbl_submission.update({
+        where: { id: submission.id },
+        data: {
+          total_stages: verificationData.length,
+          current_stage: 1,
+        },
+      });
+
+      if (stage1VerifierId) {
+        await tx.tbl_notification.create({
+          data: {
+            user_id: stage1VerifierId,
+            title: `Tugas ${verificationData[0]?.stage_name || "Verifikasi"} (Tahap 1)`,
+            message: `Pengajuan SK "${submission.title}" menunggu peninjauan dan verifikasi Anda.`,
+            link: `/submission/${submission.id}`,
+          },
+        });
+      }
+    }
   }
 
   async Store({
@@ -247,40 +354,7 @@ class SubmissionRepository {
       }
 
       if (submission.status === SubmissionStatus.POSTED) {
-        await tx.tbl_submission_verification.createMany({
-          data: [
-            {
-              submission_id: submission.id,
-              stage: 1,
-              stage_name: "Verifikasi Unit",
-              verifier_id: "198001012005",
-              status: "PENDING",
-            },
-            {
-              submission_id: submission.id,
-              stage: 2,
-              stage_name: "Verifikasi Bagian Umum",
-              verifier_id: "staff",
-              status: "PENDING",
-            },
-            {
-              submission_id: submission.id,
-              stage: 3,
-              stage_name: "Verifikasi Pimpinan",
-              verifier_id: "197903032003",
-              status: "PENDING",
-            },
-          ],
-        });
-
-        await tx.tbl_notification.create({
-          data: {
-            user_id: "198001012005",
-            title: "Tugas Verifikasi Unit (Tahap 1)",
-            message: `Pengajuan SK "${submission.title}" menunggu peninjauan dan verifikasi Anda.`,
-            link: `/submission/${submission.id}`,
-          },
-        });
+        await this.initializeVerifications(tx, submission, creator);
       }
 
       await tx.tbl_submission_log.create({
@@ -461,70 +535,49 @@ class SubmissionRepository {
       });
 
       if (status === SubmissionStatus.POSTED) {
-        const existingVerifications = await tx.tbl_submission_verification.count({
-          where: { submission_id },
-        });
-
-        if (existingVerifications === 0) {
-          await tx.tbl_submission_verification.createMany({
-            data: [
-              {
-                submission_id,
-                stage: 1,
-                stage_name: "Verifikasi Unit",
-                verifier_id: "198001012005",
-                status: "PENDING",
-              },
-              {
-                submission_id,
-                stage: 2,
-                stage_name: "Verifikasi Bagian Umum",
-                verifier_id: "staff",
-                status: "PENDING",
-              },
-              {
-                submission_id,
-                stage: 3,
-                stage_name: "Verifikasi Pimpinan",
-                verifier_id: "197903032003",
-                status: "PENDING",
-              },
-            ],
-          });
-
-          await tx.tbl_notification.create({
-            data: {
-              user_id: "198001012005",
-              title: "Tugas Verifikasi Unit (Tahap 1)",
-              message: `Pengajuan SK "${submission.title}" menunggu peninjauan dan verifikasi Anda.`,
-              link: `/submission/${submission.id}`,
-            },
-          });
-        }
+        await this.initializeVerifications(tx, submission);
       }
 
       switch (status) {
         case SubmissionStatus.APPROVED:
-          const list_consider = this.createDocumentList({
-            items: submission.list_consider,
-            type: "Alphabet",
-          });
-          const list_observe = this.createDocumentList({
-            items: submission.list_observe,
-            type: "Numeric",
-          });
-          const list_decide = this.createDocumentList({
-            items: submission.list_decide,
-            type: "NumAlphabet",
-          });
+          let filepath = "";
 
-          const filepath = await DocxTemplateService.submissionApproved({
-            title: submission.title.toUpperCase(),
-            list_consider: list_consider,
-            list_observe: list_observe,
-            list_decide: list_decide,
-            date: moment(submission.pickup_plan).format("DD MMMM YYYY"),
-          });
+          if (submission.template_id) {
+            const template = await tx.tbm_template.findUnique({
+              where: { id: submission.template_id },
+            });
+            if (template) {
+              filepath = await DocxTemplateService.renderTemplate({
+                templatePath: template.filepath,
+                title: submission.title,
+                values: submission.template_values,
+                pickup_plan: submission.pickup_plan,
+              });
+            }
+          }
+
+          if (!filepath) {
+            const list_consider = this.createDocumentList({
+              items: submission.list_consider,
+              type: "Alphabet",
+            });
+            const list_observe = this.createDocumentList({
+              items: submission.list_observe,
+              type: "Numeric",
+            });
+            const list_decide = this.createDocumentList({
+              items: submission.list_decide,
+              type: "NumAlphabet",
+            });
+
+            filepath = await DocxTemplateService.submissionApproved({
+              title: submission.title.toUpperCase(),
+              list_consider: list_consider,
+              list_observe: list_observe,
+              list_decide: list_decide,
+              date: moment(submission.pickup_plan).format("DD MMMM YYYY"),
+            });
+          }
 
           if (!filepath) throw new Error("Gagal membuat surat keputusan");
 
@@ -680,7 +733,28 @@ class SubmissionRepository {
         );
       }
 
-      if (currentVerification.verifier_id !== user.id && !user.is_admin) {
+      const isAssigned =
+        currentVerification.verifier_id === user.id ||
+        currentVerification.verifier_id === user.nip ||
+        user.is_admin;
+
+      const isStageVerifier = await tx.tbm_verification_stage_verifier.findFirst({
+        where: {
+          stage_id: currentVerification.stage,
+          OR: [{ user_id: user.id }, { user_id: user.nip }],
+        },
+      });
+
+      const isUnitLeader =
+        currentVerification.stage === 1 &&
+        (await tx.tbm_unit.findFirst({
+          where: {
+            OR: [{ leader_id: user.id }, { leader_id: user.nip }],
+            is_deleted: false,
+          },
+        }));
+
+      if (!isAssigned && !isStageVerifier && !isUnitLeader && !user.is_admin) {
         throw new Error(
           "Anda tidak memiliki hak akses untuk memverifikasi tahap ini."
         );
@@ -781,26 +855,44 @@ class SubmissionRepository {
       }
 
       // FINAL APPROVAL: generate docx template
-      const list_consider = this.createDocumentList({
-        items: submission.list_consider,
-        type: "Alphabet",
-      });
-      const list_observe = this.createDocumentList({
-        items: submission.list_observe,
-        type: "Numeric",
-      });
-      const list_decide = this.createDocumentList({
-        items: submission.list_decide,
-        type: "NumAlphabet",
-      });
+      let filepath = "";
 
-      const filepath = await DocxTemplateService.submissionApproved({
-        title: submission.title.toUpperCase(),
-        list_consider,
-        list_observe,
-        list_decide,
-        date: moment(submission.pickup_plan).format("DD MMMM YYYY"),
-      });
+      if (submission.template_id) {
+        const template = await tx.tbm_template.findUnique({
+          where: { id: submission.template_id },
+        });
+        if (template) {
+          filepath = await DocxTemplateService.renderTemplate({
+            templatePath: template.filepath,
+            title: submission.title,
+            values: submission.template_values,
+            pickup_plan: submission.pickup_plan,
+          });
+        }
+      }
+
+      if (!filepath) {
+        const list_consider = this.createDocumentList({
+          items: submission.list_consider,
+          type: "Alphabet",
+        });
+        const list_observe = this.createDocumentList({
+          items: submission.list_observe,
+          type: "Numeric",
+        });
+        const list_decide = this.createDocumentList({
+          items: submission.list_decide,
+          type: "NumAlphabet",
+        });
+
+        filepath = await DocxTemplateService.submissionApproved({
+          title: submission.title.toUpperCase(),
+          list_consider,
+          list_observe,
+          list_decide,
+          date: moment(submission.pickup_plan).format("DD MMMM YYYY"),
+        });
+      }
 
       if (!filepath) throw new Error("Gagal membuat borang surat keputusan");
 
