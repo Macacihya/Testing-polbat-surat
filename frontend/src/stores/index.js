@@ -6,6 +6,7 @@ import dashboard from './modules/dashboard'
 import document from './modules/document'
 import submission from './modules/submission'
 import verification from './modules/verification'
+import template from './modules/template'
 
 import regulation from './modules/regulation'
 
@@ -22,6 +23,7 @@ const store = new Store({
     document,
     submission,
     verification,
+    template,
 
     regulation,
 

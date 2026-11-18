@@ -46,6 +46,7 @@ declare module 'vue-router/auto/routes' {
     'regulation': RouteRecordInfo<'regulation', '/regulation', Record<never, never>, Record<never, never>>,
     'setup-group': RouteRecordInfo<'setup-group', '/setup/group', Record<never, never>, Record<never, never>>,
     'setup-group-form': RouteRecordInfo<'setup-group-form', '/setup/group/form', Record<never, never>, Record<never, never>>,
+    'setup-template': RouteRecordInfo<'setup-template', '/setup/template', Record<never, never>, Record<never, never>>,
     'setup-unit': RouteRecordInfo<'setup-unit', '/setup/unit', Record<never, never>, Record<never, never>>,
     'setup-user': RouteRecordInfo<'setup-user', '/setup/user', Record<never, never>, Record<never, never>>,
     'setup-verification': RouteRecordInfo<'setup-verification', '/setup/verification', Record<never, never>, Record<never, never>>,

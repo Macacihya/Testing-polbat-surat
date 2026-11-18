@@ -5,6 +5,8 @@ import { toast } from "vue-sonner";
 const form = {
   title: "",
   type: "",
+  template_id: null,
+  template_values: {},
   is_attachment: false,
   filepath_attachment: "",
   pickup_plan: moment().format("YYYY-MM-DD"),
@@ -144,7 +146,8 @@ const submission = {
 
         context.commit("SET_REPORT", result.data.data);
       } catch (error) {
-        toast.error(error.response.data.message);
+        const msg = error.response?.data?.message || "Tidak dapat terhubung ke server backend. Pastikan server backend (port 4005) sedang berjalan.";
+        toast.error(msg);
       } finally {
         context.commit("SET_IS_LOADING", {
           key: "report",
@@ -159,7 +162,12 @@ const submission = {
       });
 
       try {
-        const payload = context.state.form;
+        const payload = { ...context.state.form };
+
+        // Serialisasi template_values jika object untuk FormData
+        if (payload.template_values && typeof payload.template_values === "object") {
+          payload.template_values = JSON.stringify(payload.template_values);
+        }
 
         const result = await axiosInstance({
           url: `/submission`,
@@ -169,7 +177,9 @@ const submission = {
           },
           data: {
             ...payload,
-            filepath_attachment: payload.filepath_attachment[0],
+            filepath_attachment: Array.isArray(payload.filepath_attachment)
+              ? payload.filepath_attachment[0]
+              : payload.filepath_attachment || null,
           },
         });
 
@@ -178,7 +188,8 @@ const submission = {
 
         return true;
       } catch (error) {
-        toast.error(error.response.data.message);
+        const msg = error.response?.data?.message || "Tidak dapat terhubung ke server backend. Pastikan server backend (port 4005) sedang berjalan.";
+        toast.error(msg);
       } finally {
         context.commit("SET_IS_LOADING", {
           key: "form",
@@ -206,6 +217,8 @@ const submission = {
         context.state.form = {
           title: data.title,
           type: data.type,
+          template_id: data.template_id || null,
+          template_values: typeof data.template_values === "string" ? JSON.parse(data.template_values || "{}") : data.template_values || {},
           is_attachment: data.is_attachment,
           filepath_attachment: null,
           pickup_plan: moment(data.pickup_plan).format("YYYY-MM-DD"),
@@ -243,7 +256,11 @@ const submission = {
       });
 
       try {
-        const payload = context.state.form;
+        const payload = { ...context.state.form };
+
+        if (payload.template_values && typeof payload.template_values === "object") {
+          payload.template_values = JSON.stringify(payload.template_values);
+        }
 
         const result = await axiosInstance({
           url: `/submission/${submission_id}`,
@@ -253,9 +270,9 @@ const submission = {
           },
           data: {
             ...payload,
-            filepath_attachment: payload.filepath_attachment
+            filepath_attachment: Array.isArray(payload.filepath_attachment)
               ? payload.filepath_attachment[0]
-              : null,
+              : payload.filepath_attachment || null,
           },
         });
 
@@ -290,7 +307,8 @@ const submission = {
 
         return true;
       } catch (error) {
-        toast.error(error.response.data.message);
+        const msg = error.response?.data?.message || "Tidak dapat terhubung ke server backend. Pastikan server backend (port 4005) sedang berjalan.";
+        toast.error(msg);
       } finally {
         context.commit("SET_IS_LOADING", {
           key: "report",
@@ -319,7 +337,8 @@ const submission = {
 
         return true;
       } catch (error) {
-        toast.error(error.response.data.message);
+        const msg = error.response?.data?.message || "Tidak dapat terhubung ke server backend. Pastikan server backend (port 4005) sedang berjalan.";
+        toast.error(msg);
       } finally {
         context.commit("SET_IS_LOADING", {
           key: "form",

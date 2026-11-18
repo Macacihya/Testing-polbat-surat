@@ -31,7 +31,10 @@ export const getNavItems = () => {
         { title: 'Tag Groups', to: 'setup-group' },
         { title: 'Unit', to: 'setup-unit' },
         { title: 'Users', to: 'setup-user' },
-        ...(admin ? [{ title: 'Alur Verifikasi', to: 'setup-verification' }] : []),
+        ...(admin ? [
+          { title: 'Alur Verifikasi', to: 'setup-verification' },
+          { title: 'Template Surat', to: 'setup-template' },
+        ] : []),
       ],
     },
   ]
