@@ -133,47 +133,122 @@
 
           <VDivider class="my-5" />
       
-          <div class="mb-5">
-            <h6 class="text-h6 mb-2">
-              Pertimbangan
-            </h6>
-            <ul class="ps-5">
-              <li
-                v-for="item in submission?.list_consider"
-                :key="item"
-                class="text-body-1"
+          <!-- SEKSI VARIABEL TEMPLATE DINAMIS (Jika pengajuan berbasis template) -->
+          <div
+            v-if="submission?.template || submission?.template_id"
+            class="mb-6"
+          >
+            <div class="d-flex align-center justify-space-between mb-3">
+              <div>
+                <h6 class="text-h6 mb-0">
+                  Data Variabel Template
+                </h6>
+                <p class="text-caption text-medium-emphasis mb-0">
+                  Format Surat: <strong>{{ submission?.template?.title || submission?.template?.code || 'Template Resmi' }}</strong>
+                </p>
+              </div>
+              <VChip
+                color="primary"
+                variant="tonal"
+                size="small"
               >
-                {{ item }}
-              </li>
-            </ul>
+                {{ submission?.template?.type || 'Template Dokumen' }}
+              </VChip>
+            </div>
+
+            <!-- Tabel Nilai Variabel -->
+            <VTable
+              density="compact"
+              class="border rounded mb-4"
+            >
+              <thead>
+                <tr>
+                  <th style="inline-size: 40%;">
+                    Nama Variabel
+                  </th>
+                  <th>Nilai Isian</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="(val, key) in parsedTemplateValues"
+                  :key="key"
+                >
+                  <td class="font-weight-medium">
+                    {{ formatVariableLabel(key) }}
+                  </td>
+                  <td>{{ val || '-' }}</td>
+                </tr>
+                <tr v-if="!Object.keys(parsedTemplateValues).length">
+                  <td
+                    colspan="2"
+                    class="text-center text-medium-emphasis py-3"
+                  >
+                    Tidak ada variabel yang terisi
+                  </td>
+                </tr>
+              </tbody>
+            </VTable>
+
+            <VAlert
+              variant="tonal"
+              color="info"
+              density="compact"
+            >
+              <div class="d-flex align-center gap-2">
+                <VIcon
+                  icon="tabler-shield-check"
+                  size="18"
+                />
+                <span class="text-caption">Klausul hukum baku (Menimbang, Mengingat, Menetapkan) distandarkan secara otomatis oleh template resmi.</span>
+              </div>
+            </VAlert>
           </div>
-          <div class="mb-5">
-            <h6 class="text-h6 mb-2">
-              Pengamatan
-            </h6>
-            <ul class="ps-5">
-              <li
-                v-for="item in submission?.list_observe"
-                :key="item"
-                class="text-body-1"
-              >
-                {{ item }}
-              </li>
-            </ul>
-          </div>
-          <div class="mb-5">
-            <h6 class="text-h6 mb-2">
-              Keputusan
-            </h6>
-            <ul class="ps-5">
-              <li
-                v-for="item in submission?.list_decide"
-                :key="item"
-                class="text-body-1"
-              >
-                {{ item }}
-              </li>
-            </ul>
+
+          <!-- SEKSI KONSIDERANS MANUAL (Jika bukan template) -->
+          <div v-else>
+            <div class="mb-5">
+              <h6 class="text-h6 mb-2">
+                Pertimbangan
+              </h6>
+              <ul class="ps-5">
+                <li
+                  v-for="item in submission?.list_consider"
+                  :key="item"
+                  class="text-body-1"
+                >
+                  {{ item }}
+                </li>
+              </ul>
+            </div>
+            <div class="mb-5">
+              <h6 class="text-h6 mb-2">
+                Pengamatan
+              </h6>
+              <ul class="ps-5">
+                <li
+                  v-for="item in submission?.list_observe"
+                  :key="item"
+                  class="text-body-1"
+                >
+                  {{ item }}
+                </li>
+              </ul>
+            </div>
+            <div class="mb-5">
+              <h6 class="text-h6 mb-2">
+                Keputusan
+              </h6>
+              <ul class="ps-5">
+                <li
+                  v-for="item in submission?.list_decide"
+                  :key="item"
+                  class="text-body-1"
+                >
+                  {{ item }}
+                </li>
+              </ul>
+            </div>
           </div>
 
           <VDivider class="my-5" />
@@ -385,6 +460,27 @@ const submission = computed(() => store.state.submission.report)
 const loading = computed(() => store.state.submission.loading.report)
 const tracking = computed(() => store.state.verification.tracking)
 const tracking_loading = computed(() => store.state.verification.loading.tracking)
+
+const parsedTemplateValues = computed(() => {
+  const vals = submission.value?.template_values
+  if (!vals) return {}
+  if (typeof vals === 'string') {
+    try {
+      return JSON.parse(vals)
+    } catch {
+      return {}
+    }
+  }
+  return vals
+})
+
+const formatVariableLabel = key => {
+  if (!key) return ''
+  return String(key)
+    .split('_')
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ')
+}
 
 const fetchSubmission = id => {
   if (id) {

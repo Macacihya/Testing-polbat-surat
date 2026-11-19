@@ -38,13 +38,39 @@
               </VAvatar>
             </template>
 
-            <VCardTitle>Tahap {{ stage.stage }}</VCardTitle>
+            <VCardTitle class="d-flex align-center justify-space-between flex-wrap gap-1">
+              <span>Tahap {{ stage.stage }}</span>
+              <VChip
+                v-if="stage.stage === 1"
+                size="x-small"
+                color="info"
+                variant="tonal"
+              >
+                Unit Pengusul
+              </VChip>
+            </VCardTitle>
             <VCardSubtitle>{{ stage.name }} · {{ stage.verifiers.length }} verifikator</VCardSubtitle>
           </VCardItem>
 
           <VDivider />
 
           <VCardText>
+            <VAlert
+              v-if="stage.stage === 1"
+              variant="tonal"
+              color="info"
+              density="compact"
+              class="mb-3"
+            >
+              <div class="d-flex align-center gap-2">
+                <VIcon
+                  icon="tabler-shield-check"
+                  size="18"
+                />
+                <span class="text-caption font-weight-medium">Otomatis Mengikuti Pimpinan Unit Pengusul</span>
+              </div>
+            </VAlert>
+
             <VAlert
               v-if="!stage.verifiers.length"
               variant="tonal"
